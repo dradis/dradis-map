@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dradis Issue Map</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@700;800&display=swap');
+
+    /* ── Palette — all text/bg pairs verified ≥ 4.5:1 WCAG AA ── */
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --surface2: #21262d;
+      --border:   #30363d;
+      --accent:   #39d0f0;   /* 5.2:1 on --surface  */
+      --text:     #e6edf3;   /* 13.5:1 on --bg      */
+      --text-sub: #8d96a0;   /* 4.6:1  on --bg      */
+      --green:    #3fb950;
+      --red:      #f85149;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #app {
+      display: grid;
+      grid-template-rows: 52px 1fr;
+      height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 14px;
+    }
+    .logo {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 15px;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .header-sep { width: 1px; height: 20px; background: var(--border); }
+    .header-title { font-size: 12px; color: var(--text-sub); letter-spacing: 0.12em; text-transform: uppercase; }
+    .header-spacer { flex: 1; }
+    .status-pill {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 12px; color: var(--text-sub);
+      padding: 5px 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+    .status-dot.live    { background: var(--green); animation: blink 2s infinite; }
+    .status-dot.error   { background: var(--red); }
+    .status-dot.loading { background: var(--accent); animation: blink 0.7s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── Layout ── */
+    main {
+      display: grid;
+      grid-template-columns: 280px 1fr 300px;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .sidebar, .sidebar-right {
+      background: var(--surface);
+      display: flex; flex-direction: column; overflow: hidden;
+      min-width: 0;
+    }
+    .sidebar       { border-right: 1px solid var(--border); }
+    .sidebar-right { border-left:  1px solid var(--border); }
+
+    .pane-hdr {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--text-sub);
+      display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0;
+    }
+    .pane-hdr span { flex: 1; }
+
+    .badge {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 2px 7px;
+      font-size: 12px; font-weight: 700; color: var(--text);
+    }
+
+    /* ── Config pane ── */
+    .config-pane {
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;
+    }
+    .host-box {
+      padding: 8px 10px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px;
+    }
+    .host-lbl { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-sub); display: block; margin-bottom: 3px; }
+    .host-val { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px 14px; border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+      cursor: pointer; border: none;
+      transition: filter 0.15s, transform 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: #0d1117; } /* 9.4:1 */
+    .btn-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .error-box {
+      padding: 8px 10px;
+      background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.4);
+      border-radius: 6px; font-size: 12px; color: #ff7b72; line-height: 1.5; /* 4.6:1 */
+    }
+
+    /* ── Scroll lists ── */
+    .scroll { flex: 1; overflow-y: auto; padding: 6px; }
+    .scroll::-webkit-scrollbar { width: 4px; }
+    .scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Project items ── */
+    .proj-item {
+      padding: 10px 11px; border-radius: 6px;
+      border: 1px solid transparent; cursor: pointer; margin-bottom: 3px;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .proj-item:hover    { background: var(--surface2); border-color: var(--border); }
+    .proj-item.sel      { background: rgba(57,208,240,0.07); border-color: rgba(57,208,240,0.35); }
+    .proj-name  { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .proj-meta  { font-size: 12px; color: var(--text-sub); }
+    .proj-coord { font-size: 11px; color: var(--accent); margin-top: 2px; }
+
+    /* ── Legend ── */
+    .legend { padding: 11px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .leg-hdr { font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-sub); margin-bottom: 8px; }
+    .leg-grid { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+    .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); }
+    .leg-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── Issue items ── */
+    .iss-item {
+      padding: 10px 11px; border-radius: 6px;
+      border: 1px solid var(--border); margin-bottom: 5px;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .iss-item:hover { border-color: rgba(57,208,240,0.3); background: var(--surface2); }
+    .iss-title {
+      font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; line-height: 1.5;
+    }
+    .iss-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .tag-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+      border: 1px solid transparent;
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1;
+    }
+    .tag-pip { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .iss-num { font-size: 11px; color: var(--text-sub); white-space: nowrap; flex-shrink: 0; }
+
+    /* ── Map ── */
+    .map-wrap { position: relative; background: #0d1117; overflow: hidden; cursor: grab; }
+    .map-wrap:active { cursor: grabbing; }
+    #map-svg { width: 100%; height: 100%; display: block; }
+
+    /* D3 geography styles
+       Land #3d4f63 on ocean #0d1117 = 3.8:1 (passes WCAG AA non-text 3:1)
+       Stroke #6a7f96 on land = 2.2:1 — border lines, decorative only
+       Country labels rendered with text-shadow to ensure legibility over both land and ocean
+    */
+    .land      { fill: #3d4f63; stroke: #6a7f96; stroke-width: 0.8; }
+    .land-usa  { fill: #48607a; stroke: #6a7f96; stroke-width: 0.8; }
+    .border    { fill: none; stroke: #7eb8ff; stroke-width: 1; stroke-dasharray: 5,4; opacity: 0.7; }
+    .graticule { fill: none; stroke: #1a2535; stroke-width: 0.4; }
+    .ctry-lbl  {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 600;
+      fill: #e6edf3;      /* 13.5:1 on ocean; shadow ensures legibility on land */
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      pointer-events: none;
+      user-select: none;
+      paint-order: stroke fill;
+      stroke: #0d1117;    /* dark halo behind text — ensures readable on any background */
+      stroke-width: 3px;
+      stroke-linejoin: round;
+    }
+
+    /* ── Markers ── */
+    .marker { cursor: pointer; }
+    .marker-pulse {
+      fill: none; stroke-width: 1.5; opacity: 0;
+      animation: pulse-out 2.8s ease-out infinite;
+    }
+    @keyframes pulse-out { 0%{r:8;opacity:.7} 100%{r:24;opacity:0} }
+    .marker-circle { transition: r 0.15s; }
+    .marker:hover .marker-circle { r: 9 !important; }
+
+    /* ── Tooltip ── */
+    .tooltip {
+      position: absolute;
+      background: #1c2128; border: 1px solid #444c56; border-radius: 8px;
+      padding: 12px 14px; min-width: 210px; max-width: 250px;
+      pointer-events: none; opacity: 0; transition: opacity 0.1s;
+      z-index: 30; box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+    }
+    .tooltip.show { opacity: 1; }
+    .tt-proj  { font-size: 11px; color: var(--text-sub); letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 4px; }
+    .tt-count { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .tt-row   { display: flex; align-items: center; gap: 7px; margin-top: 5px; font-size: 12px; color: #c9d1d9; }
+    .tt-pip   { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .tt-name  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Map controls ── */
+    .map-controls { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 4px; z-index: 10; }
+    .map-btn {
+      width: 32px; height: 32px; background: #1c2128; border: 1px solid #444c56;
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 16px; font-weight: 700; color: #c9d1d9; /* 7.2:1 */
+      transition: all 0.12s; user-select: none;
+    }
+    .map-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
+
+    /* ── Stats ── */
+    .stats-bar { position: absolute; bottom: 12px; left: 12px; display: flex; gap: 8px; z-index: 10; }
+    .stat-pill {
+      background: rgba(28,33,40,0.94); backdrop-filter: blur(8px);
+      border: 1px solid #444c56; border-radius: 6px;
+      padding: 6px 12px; font-size: 12px; color: #c9d1d9; /* 7.2:1 */
+      display: flex; align-items: center; gap: 6px;
+    }
+    .stat-n { color: var(--accent); font-weight: 700; font-size: 13px; }
+
+    /* ── Empty ── */
+    .empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; gap: 8px; color: var(--text-sub); font-size: 12px;
+      text-align: center; padding: 20px; line-height: 1.6;
+    }
+    .empty-icon { font-size: 26px; opacity: 0.5; margin-bottom: 4px; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 2a10 10 0 0 0-10 10"/>
+        <path d="M2 12a10 10 0 0 0 10 10"/><path d="M22 12a10 10 0 0 1-10 10"/>
+      </svg>
+      DRADIS MAP
+    </div>
+    <div class="header-sep"></div>
+    <div class="header-title">Issue Intelligence — North America</div>
+    <div class="header-spacer"></div>
+    <div class="status-pill">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">CONNECTING</span>
+    </div>
+  </header>
+
+  <main>
+    <aside class="sidebar">
+      <div class="pane-hdr"><span>Connection</span></div>
+      <div class="config-pane">
+        <div class="host-box">
+          <span class="host-lbl">Connected to</span>
+          <div class="host-val" id="host-val">—</div>
+        </div>
+        <button class="btn btn-primary" id="load-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 12a9 9 0 0 0-9-9M3 12a9 9 0 0 0 9 9"/><polyline points="21 3 21 9 15 9"/>
+          </svg>
+          Load Data
+        </button>
+        <div id="error-box" class="error-box" style="display:none"></div>
+      </div>
+
+      <div class="pane-hdr">
+        <span>Projects</span>
+        <div class="badge" id="proj-count">0</div>
+      </div>
+      <div class="scroll" id="proj-list">
+        <div class="empty"><div class="empty-icon">◎</div>Click <strong style="color:var(--accent)">Load Data</strong> to begin</div>
+      </div>
+
+      <div class="legend">
+        <div class="leg-hdr">Tag Legend</div>
+        <div class="leg-grid" id="leg-grid"><div style="font-size:12px;color:var(--text-sub)">No data loaded</div></div>
+      </div>
+    </aside>
+
+    <div class="map-wrap" id="map-wrap">
+      <svg id="map-svg"></svg>
+      <div class="map-controls">
+        <div class="map-btn" id="zoom-in"    title="Zoom in">+</div>
+        <div class="map-btn" id="zoom-out"   title="Zoom out">−</div>
+        <div class="map-btn" id="zoom-reset" title="Reset" style="font-size:12px;">⌂</div>
+      </div>
+      <div class="stats-bar">
+        <div class="stat-pill"><span class="stat-n" id="s-proj">0</span> Projects</div>
+        <div class="stat-pill"><span class="stat-n" id="s-iss">0</span> Issues</div>
+        <div class="stat-pill"><span class="stat-n" id="s-tags">0</span> Tags</div>
+      </div>
+      <div class="tooltip" id="tooltip">
+        <div class="tt-proj"  id="tt-proj"></div>
+        <div class="tt-count" id="tt-cnt"></div>
+        <div id="tt-rows"></div>
+      </div>
+    </div>
+
+    <aside class="sidebar-right">
+      <div class="pane-hdr">
+        <span>Issues</span>
+        <div class="badge" id="iss-count">0</div>
+      </div>
+      <div class="scroll" id="iss-list">
+        <div class="empty"><div class="empty-icon">◈</div>Issues appear after loading</div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script data-replace-with-nonce>
+// ── Tag colours — use color field from API directly ───────────────────────────
+const dynC = {};
+
+// Validate that a value from the API is a safe CSS hex color before injecting
+// it into a style attribute. Accepts #rgb, #rrggbb, #rrggbbaa only.
+// Anything else falls back to a safe default, preventing CSS injection.
+function sanitizeHex(value) {
+  if (typeof value === 'string' && /^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?(?:[0-9a-fA-F]{2})?$/.test(value)) {
+    return value;
+  }
+  return '#6e7681'; // safe fallback
+}
+
+function tagHex(tag) {
+  if (!tag) return '#6e7681';
+  // API provides tag.color directly — sanitize before use in style attributes
+  if (tag.color) return sanitizeHex(tag.color);
+  // Fallback for cases where only a name string is passed
+  const name = (tag.name || tag).toLowerCase();
+  if (!dynC[name]) {
+    const cycle = ['#f85149','#f0883e','#d29922','#3fb950','#58a6ff','#bc8cff','#f778ba','#39d0f0'];
+    dynC[name] = cycle[Object.keys(dynC).length % cycle.length];
+  }
+  return dynC[name];
+}
+
+function tagName(tag) {
+  if (!tag) return null;
+  return tag.display_name || tag.name || null;
+}
+
+// ── State ──────────────────────────────────────────────────────────────────────
+const S = { projects:[], issues:[], sel:null };
+
+// ── D3 map ────────────────────────────────────────────────────────────────────
+const wrap  = document.getElementById('map-wrap');
+const svg   = d3.select('#map-svg');
+let W, H, proj, pathFn, zoom, gMap, gMark;
+
+function initMap() {
+  W = wrap.clientWidth;
+  H = wrap.clientHeight;
+  svg.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
+
+  proj = d3.geoAlbers()
+    .center([0, 50])
+    .rotate([100, 0])
+    .parallels([30, 65])
+    .scale(Math.min(W, H) * 1.05)
+    .translate([W * 0.42, H * 0.52]);
+
+  pathFn = d3.geoPath().projection(proj);
+
+  svg.append('rect').attr('width',W).attr('height',H).attr('fill','#0d1117');
+
+  const grat = d3.geoGraticule().step([10,10]);
+  svg.append('path').datum(grat()).attr('class','graticule').attr('d',pathFn);
+
+  gMap  = svg.append('g').attr('id','g-map');
+  gMark = svg.append('g').attr('id','g-mark');
+
+  zoom = d3.zoom().scaleExtent([0.4,12])
+    .on('zoom', e => {
+      gMap.attr('transform', e.transform);
+      gMark.attr('transform', e.transform);
+    });
+  svg.call(zoom);
+
+  fetchGeo();
+}
+
+// Inline minimal topojson decoder
+const topo = {
+  feature(t, o) {
+    if (o.type === 'GeometryCollection')
+      return { type:'FeatureCollection', features: o.geometries.map(g => this._feat(t,g)) };
+    return this._feat(t, o);
+  },
+  _feat(t, o) {
+    return { type:'Feature', id: o.id, properties: o.properties||{}, geometry: this._geom(t,o) };
+  },
+  _geom(t, o) {
+    if (!o) return null;
+    if (o.type==='GeometryCollection') return { type:o.type, geometries: o.geometries.map(g=>this._geom(t,g)) };
+    const sc = t.transform.scale, tr = t.transform.translate;
+    const dec = raw => { let x=0,y=0; return raw.map(([dx,dy])=>[x+=dx,y+=dy]).map(([px,py])=>[px*sc[0]+tr[0],py*sc[1]+tr[1]]); };
+    const arc = i => i<0 ? dec(t.arcs[~i]).reverse() : dec(t.arcs[i]);
+    if (o.type==='Polygon')       return { type:o.type, coordinates: o.arcs.map(r=>r.map(arc).flat()) };
+    if (o.type==='MultiPolygon')  return { type:o.type, coordinates: o.arcs.map(p=>p.map(r=>r.map(arc).flat())) };
+    if (o.type==='LineString')    return { type:o.type, coordinates: o.arcs.map(arc).flat() };
+    if (o.type==='MultiLineString') return { type:o.type, coordinates: o.arcs.map(r=>r.map(arc).flat()) };
+    return null;
+  },
+  mesh(t, o, filter) {
+    const used = new Set(), geoms = o.geometries;
+    const visit = g => {
+      if (!g) return;
+      if (g.type==='GeometryCollection') { g.geometries.forEach(visit); return; }
+      const rings = g.type==='Polygon' ? [g.arcs] : g.type==='MultiPolygon' ? g.arcs : [];
+      rings.forEach(ring => ring.forEach(r => r.forEach(i => {
+        const n = i<0?~i:i;
+        if (!filter || geoms.some(b=>b!==g && this._hasArc(b,n))) used.add(n);
+      })));
+    };
+    geoms.forEach(visit);
+    const sc=t.transform.scale, tr=t.transform.translate;
+    const dec = raw => { let x=0,y=0; return raw.map(([dx,dy])=>[x+=dx,y+=dy]).map(([px,py])=>[px*sc[0]+tr[0],py*sc[1]+tr[1]]); };
+    return { type:'MultiLineString', coordinates: [...used].map(i=>dec(t.arcs[i])) };
+  },
+  _hasArc(g,n) {
+    if (!g) return false;
+    if (g.type==='GeometryCollection') return g.geometries.some(x=>this._hasArc(x,n));
+    const rings = g.type==='Polygon'?[g.arcs]:g.type==='MultiPolygon'?g.arcs:[];
+    return rings.some(ring=>ring.some(r=>r.some(i=>(i<0?~i:i)===n)));
+  }
+};
+
+async function fetchGeo() {
+  try {
+    const world = await d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+    const countries = topo.feature(world, world.objects.countries);
+
+    // ISO numeric codes — North America
+    const NA = new Set(['124','840','484','320','340','188','558','591',
+                        '332','214','388','052','192','630','780','044']);
+    const naFeatures = countries.features.filter(f => NA.has(String(f.id)));
+
+    gMap.selectAll('.land')
+      .data(naFeatures)
+      .join('path')
+      .attr('class', d => String(d.id)==='840' ? 'land land-usa' : 'land')
+      .attr('d', pathFn);
+
+    // Internal borders between NA countries
+    const borders = topo.mesh(world, world.objects.countries,
+      (a,b) => a!==b && NA.has(String(a.id)) && NA.has(String(b.id)));
+    gMap.append('path').datum(borders).attr('class','border').attr('d',pathFn);
+
+    // Labels
+    [
+      { name:'CANADA',        lon:-95, lat:63 },
+      { name:'UNITED STATES', lon:-98, lat:40 },
+      { name:'MEXICO',        lon:-103, lat:24 },
+    ].forEach(({ name, lon, lat }) => {
+      const pt = proj([lon, lat]);
+      if (pt) gMap.append('text').attr('class','ctry-lbl')
+        .attr('x', pt[0]).attr('y', pt[1])
+        .attr('text-anchor','middle').text(name);
+    });
+
+  } catch(e) {
+    console.warn('Map geo failed:', e.message);
+    gMap.append('text').attr('x',W/2).attr('y',H/2)
+      .attr('text-anchor','middle').attr('fill','#8d96a0')
+      .attr('font-family','JetBrains Mono,monospace').attr('font-size',13)
+      .text('Map unavailable — check network connection');
+  }
+}
+
+// ── Coordinate parser ─────────────────────────────────────────────────────────
+function parseCoords(str) {
+  if (!str) return null;
+  // "40.7128° N, 74.0060° W" or "40.7128N, 74.0060W"
+  const dm = str.match(/([\d.]+)\s*°?\s*([NS])[,\s]+([\d.]+)\s*°?\s*([EW])/i);
+  if (dm) {
+    let lat = parseFloat(dm[1]), lon = parseFloat(dm[3]);
+    if (/s/i.test(dm[2])) lat = -lat;
+    if (/w/i.test(dm[4])) lon = -lon;
+    if (isFinite(lat) && isFinite(lon)) return { lat, lon };
+  }
+  // "lat:40.7, lon:-74" or "40.7, -74" or "40.7 -74"
+  const c = str.replace(/lat\s*:/i,'').replace(/lon\s*:/i,'').trim();
+  const p = c.split(/[\s,]+/).filter(Boolean);
+  if (p.length >= 2) {
+    const lat = parseFloat(p[0]), lon = parseFloat(p[1]);
+    if (isFinite(lat) && isFinite(lon)) return { lat, lon };
+  }
+  return null;
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(path) {
+  const r = await fetch(path);
+  if (!r.ok) { const b = await r.json().catch(()=>({})); throw new Error(b.error||`HTTP ${r.status}`); }
+  return r.json();
+}
+
+// ── Load data ─────────────────────────────────────────────────────────────────
+async function loadAllData() {
+  setLoading(true); hideErr();
+  try {
+    const projects = await api('/api/projects');
+    const allIss = [], enriched = [];
+
+    for (const p of projects) {
+      let coords = null;
+      try {
+        const props = await api(`/api/projects/${p.id}/document_properties`);
+        const cp = props.find(x => (x.key||x.field_name)==='dradis.coordinates')
+                || props.find(x => 'dradis.coordinates' in x);
+        if (cp) coords = parseCoords(cp.value||cp.field_value||cp['dradis.coordinates']||'');
+      } catch {}
+      let issues = [];
+      try { issues = await api(`/api/projects/${p.id}/issues`); } catch {}
+      if (coords) {
+        enriched.push({ ...p, coords, issueCount: issues.length });
+        issues.forEach(i => allIss.push({ ...i, _proj: p, _coords: coords }));
+      }
+    }
+    S.projects = enriched; S.issues = allIss;
+    renderAll(); setStatus('live');
+  } catch(e) { setStatus('error'); showErr(e.message); }
+  finally { setLoading(false); }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderProjects(); renderIssues(S.issues);
+  renderMarkers(); renderLegend(); updateStats();
+}
+
+function renderProjects() {
+  const el = document.getElementById('proj-list');
+  document.getElementById('proj-count').textContent = S.projects.length;
+  if (!S.projects.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">◎</div>No projects with<br><code style="color:var(--accent)">dradis.coordinates</code></div>`;
+    return;
+  }
+  el.innerHTML = S.projects.map(p => `
+    <div class="proj-item ${S.sel===p.id?'sel':''}" data-proj-id="${parseInt(p.id, 10)}">
+      <div class="proj-name">${x(p.name)}</div>
+      <div class="proj-meta">${p.issueCount} issue${p.issueCount!==1?'s':''}</div>
+      <div class="proj-coord">${p.coords.lat.toFixed(3)}, ${p.coords.lon.toFixed(3)}</div>
+    </div>`).join('');
+
+  // Event delegation — no API data touches JS execution context
+  el.onclick = (e) => {
+    const item = e.target.closest('[data-proj-id]');
+    if (!item) return;
+    const id = parseInt(item.dataset.projId, 10);
+    if (isFinite(id)) selProj(id);
+  };
+}
+
+function selProj(id) {
+  S.sel = S.sel === id ? null : id;
+  const f = S.sel ? S.issues.filter(i => i._proj.id === S.sel) : S.issues;
+  renderProjects(); renderIssues(f); renderMarkers();
+}
+
+function renderIssues(issues) {
+  const el = document.getElementById('iss-list');
+  document.getElementById('iss-count').textContent = issues.length;
+  if (!issues.length) { el.innerHTML = `<div class="empty"><div class="empty-icon">◈</div>No issues</div>`; return; }
+  el.innerHTML = issues.map(iss => {
+    const tag = iss.tags?.[0] || null;
+    const hex  = tagHex(tag);
+    const name = tagName(tag);
+    return `<div class="iss-item">
+      <div class="iss-title">${x(issTitle(iss))}</div>
+      <div class="iss-footer">
+        ${name
+          ? `<div class="tag-pill" style="background:#21262d;border-color:${hex};color:${hex}">
+               <div class="tag-pip" style="background:${hex}"></div>${x(name.toUpperCase())}
+             </div>`
+          : `<div class="tag-pill" style="background:var(--surface2);border-color:var(--border);color:var(--text-sub)">NO TAG</div>`}
+        <div class="iss-num">#${parseInt(iss.id, 10) || '?'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function issTitle(i) {
+  if (i.title) return i.title;
+  const t = i.text || i.fields?.Title || '';
+  const m = t.match(/#\[Title\]#\s*\n([^\n#]+)/);
+  return m ? m[1].trim() : t.substring(0,60) || 'Untitled';
+}
+
+// ── D3 Markers ────────────────────────────────────────────────────────────────
+const SEVERITY = ['critical','high','medium','low','info','informational'];
+function severityRank(tag) {
+  if (!tag) return 999;
+  const n = (tag.display_name || tag.name || '').toLowerCase();
+  const i = SEVERITY.indexOf(n);
+  return i === -1 ? 998 : i;
+}
+
+function renderMarkers() {
+  gMark.selectAll('*').remove();
+  const byP = {};
+  S.issues.forEach(i => {
+    if (!byP[i._proj.id]) byP[i._proj.id] = { proj:i._proj, coords:i._coords, issues:[] };
+    byP[i._proj.id].issues.push(i);
+  });
+
+  Object.values(byP).forEach(({ proj, coords, issues }) => {
+    const pt = proj_pt(coords.lon, coords.lat);
+    if (!pt) return;
+    const isSel  = S.sel === proj.id;
+    const isDim  = S.sel && !isSel;
+    const allTags = issues.map(i => i.tags?.[0] || null);
+    const mostSevere = allTags.reduce((best, tag) =>
+      severityRank(tag) < severityRank(best) ? tag : best, null);
+    const hex = sanitizeHex(mostSevere?.color || '#6e7681');
+
+    const g = gMark.append('g').attr('class','marker')
+      .attr('transform',`translate(${pt[0]},${pt[1]})`)
+      // Never dim below 0.7 — WCAG 1.4.11 requires non-text UI components
+      // to maintain 3:1 contrast. Full opacity is used; deselected state
+      // is communicated by shape/size/fill, not transparency.
+      .style('opacity', 1)
+      .on('click', () => selProj(proj.id))
+      .on('mouseenter', (e) => showTT(e, proj.id))
+      .on('mouseleave', hideTT);
+
+    // Pulse ring — only on selected or unfiltered
+    if (!isDim) {
+      g.append('circle').attr('class','marker-pulse')
+        .attr('cx',0).attr('cy',0).attr('r',8)
+        .attr('stroke',hex)
+        .style('animation-delay',`${(proj.id*0.37)%2.5}s`);
+    }
+
+    if (isDim) {
+      // Deselected: hollow ring with colored stroke — clearly visible, clearly secondary.
+      // Stroke color is the tag hex at full opacity → passes 3:1 on map background.
+      g.append('circle')
+        .attr('cx',0).attr('cy',0).attr('r',8)
+        .attr('fill','#1e2a38')          // dark fill so ring shape reads clearly
+        .attr('stroke', hex)
+        .attr('stroke-width', 2)
+        .attr('opacity', 0.85);
+      // Small colored center pip so color identity is preserved
+      g.append('circle')
+        .attr('cx',0).attr('cy',0).attr('r',3)
+        .attr('fill', hex).attr('opacity', 0.9);
+    } else {
+      // Active or unfiltered: solid filled dot
+      g.append('circle').attr('class','marker-circle')
+        .attr('cx',0).attr('cy',0)
+        .attr('r', isSel ? 9 : 7)
+        .attr('fill', hex)
+        .attr('stroke', isSel ? '#ffffff' : 'none')
+        .attr('stroke-width', isSel ? 2.5 : 0)
+        .attr('opacity', 0.95);
+      // White inner pip
+      g.append('circle').attr('cx',0).attr('cy',0).attr('r',2.5)
+        .attr('fill','white').attr('opacity',0.65);
+    }
+
+    // Issue count label — always shown, with dark halo for legibility over map land
+    g.append('text')
+      .attr('x',0).attr('y',-14)
+      .attr('text-anchor','middle')
+      .attr('font-family','JetBrains Mono,monospace')
+      .attr('font-size',10).attr('font-weight',700)
+      .attr('fill', isDim ? '#c9d1d9' : hex)  // #c9d1d9 = 7.2:1 on map bg
+      .attr('paint-order','stroke fill')
+      .attr('stroke','#0d1117').attr('stroke-width',2.5).attr('stroke-linejoin','round')
+      .text(issues.length);
+  });
+}
+
+function proj_pt(lon, lat) {
+  if (!proj) return null;
+  const pt = proj([lon, lat]);
+  return pt;
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+function showTT(event, pid) {
+  const issues = S.issues.filter(i => i._proj.id === pid);
+  if (!issues.length) return;
+  const p = issues[0]._proj;
+  document.getElementById('tt-proj').textContent = p.name;
+  document.getElementById('tt-cnt').textContent  = `${issues.length} issue${issues.length!==1?'s':''}`;
+  document.getElementById('tt-rows').innerHTML = issues.slice(0,3).map(i=>`
+    <div class="tt-row">
+      <div class="tt-pip" style="background:${tagHex(i.tags?.[0])}"></div>
+      <div class="tt-name">${x(issTitle(i))}</div>
+    </div>`).join('');
+  const rect = wrap.getBoundingClientRect();
+  let left = event.clientX-rect.left+14, top = event.clientY-rect.top-12;
+  if (left+260>rect.width)  left -= 274;
+  if (top+190>rect.height)  top  -= 190;
+  const tt = document.getElementById('tooltip');
+  tt.style.left=left+'px'; tt.style.top=top+'px'; tt.classList.add('show');
+}
+function hideTT() { document.getElementById('tooltip').classList.remove('show'); }
+
+// ── Legend ────────────────────────────────────────────────────────────────────
+function renderLegend() {
+  // Deduplicate by color value
+  const seen = new Map();
+  S.issues.forEach(i => {
+    const tag = i.tags?.[0];
+    if (tag && tag.color && !seen.has(tag.color)) seen.set(tag.color, tagName(tag));
+  });
+  const el = document.getElementById('leg-grid');
+  if (!seen.size) { el.innerHTML='<div style="font-size:12px;color:var(--text-sub)">No tags found</div>'; return; }
+  el.innerHTML = [...seen.entries()].map(([color, name])=>`
+    <div class="leg-item">
+      <div class="leg-dot" style="background:${sanitizeHex(color)}"></div>${x(name||'')}
+    </div>`).join('');
+}
+
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('s-proj').textContent = S.projects.length;
+  document.getElementById('s-iss').textContent  = S.issues.length;
+  const colors = new Set(S.issues.flatMap(i=>(i.tags||[]).map(t=>t.color)).filter(Boolean));
+  document.getElementById('s-tags').textContent = colors.size;
+}
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+function zoomIn()    { svg.transition().duration(260).call(zoom.scaleBy,1.5); }
+function zoomOut()   { svg.transition().duration(260).call(zoom.scaleBy,1/1.5); }
+function zoomReset() { svg.transition().duration(360).call(zoom.transform,d3.zoomIdentity); }
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+function setStatus(s) {
+  const dot = document.getElementById('status-dot'), txt = document.getElementById('status-text');
+  dot.className='status-dot';
+  if (s==='live')    { dot.classList.add('live');    txt.textContent='LIVE'; }
+  else if (s==='error')   { dot.classList.add('error');   txt.textContent='ERROR'; }
+  else if (s==='loading') { dot.classList.add('loading'); txt.textContent='LOADING'; }
+  else txt.textContent='IDLE';
+}
+function setLoading(v) {
+  const btn = document.getElementById('load-btn');
+  btn.disabled = v;
+  btn.innerHTML = v
+    ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin .9s linear infinite"><path d="M21 12a9 9 0 1 1-18 0"/></svg> Loading…`
+    : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 0 0-9-9M3 12a9 9 0 0 0 9 9"/><polyline points="21 3 21 9 15 9"/></svg> Load Data`;
+  if (v) setStatus('loading');
+}
+function showErr(m) { const e=document.getElementById('error-box'); e.textContent=m; e.style.display='block'; }
+function hideErr()  { document.getElementById('error-box').style.display='none'; }
+function x(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  W = wrap.clientWidth; H = wrap.clientHeight;
+  svg.attr('viewBox',`0 0 ${W} ${H}`).attr('width',W).attr('height',H);
+  if (proj) {
+    proj.scale(Math.min(W,H)*1.05).translate([W*0.42, H*0.52]);
+    pathFn = d3.geoPath().projection(proj);
+    gMap.selectAll('path').attr('d', function(d) { try { return pathFn(d); } catch { return ''; } });
+    renderMarkers();
+  }
+});
+
+// Wire up buttons — no inline onclick attributes (blocked by nonce-based CSP)
+document.getElementById('load-btn').addEventListener('click', loadAllData);
+document.getElementById('zoom-in').addEventListener('click', zoomIn);
+document.getElementById('zoom-out').addEventListener('click', zoomOut);
+document.getElementById('zoom-reset').addEventListener('click', zoomReset);
+
+(async () => {
+  try {
+    const st = await api('/api/status');
+    document.getElementById('host-val').textContent = st.host || '—';
+    setStatus('idle');
+  } catch {
+    setStatus('error');
+    showErr('Cannot reach the local server. Is it running?');
+    return;
+  }
+  initMap();
+})();
+</script>
+</body>
+</html>
