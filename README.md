@@ -65,3 +65,7 @@ issues on a North America map, colored by tag.
 In Dradis, add a Document Property to your project:
 - Key: `dradis.coordinates`
 - Value: `latitude,longitude` (e.g. `40.7128,-74.0060` for New York)
+
+
+# License
+GPL-2.0 — See [LICENSE](https://github.com/dradis/dradis-map/blob/main/LICENSE.txt) for details.
